@@ -206,7 +206,7 @@ int main() {
   int lane = 1;
 
   //desired velocity
-  double ref_vel = 49.5; //[mph]
+  double ref_vel = 0; //[mph]
 
 
   h.onMessage([&ref_vel, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&lane](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
@@ -252,6 +252,89 @@ int main() {
 
             int prev_size = previous_path_x.size();
 
+            //Avoid collision
+            if(prev_size > 0)
+            {
+              car_s = end_path_s;
+            }
+
+            bool too_close = false;
+            bool check_lane_change = false;
+
+            //find ref_v to use
+            for(int i = 0; i < sensor_fusion.size(); i++)
+            {
+              //if the car is in my lane
+              float d = sensor_fusion[i][6];
+              if(d < (2+4*lane+2) && d > (2+4*lane-2))
+              {
+                double vx = sensor_fusion[i][3];
+                double vy = sensor_fusion[i][4];
+                double check_speed = sqrt(vx*vx+vy*vy);
+                double check_car_s = sensor_fusion[i][5];
+
+                check_car_s += ((double)prev_size*.02*check_speed);
+                if((check_car_s > car_s) && ((check_car_s-car_s) < 30))
+                {
+                  //TODO: add some logic to change lanes etc
+                  too_close = true;
+                  check_lane_change = true;
+
+                }
+
+              }
+
+            }
+            vector<float> occupied_lanes;
+            if (check_lane_change)
+            {
+              for(int i = 0; i < sensor_fusion.size(); i++)
+              {
+                float d = sensor_fusion[i][6];
+
+                double vx = sensor_fusion[i][3];
+                double vy = sensor_fusion[i][4];
+                double check_speed = sqrt(vx*vx+vy*vy);
+                double check_car_s = sensor_fusion[i][5];
+
+                check_car_s += ((double)prev_size*.02*check_speed);
+
+                if((check_car_s > car_s) && ((check_car_s-car_s) < 30))
+                {
+                  occupied_lanes.push_back(d);
+                }
+              }
+              int current_lane = lane;
+              for(int i = 0; i < occupied_lanes.size(); i++ )
+              {
+                if(occupied_lanes[i] < (2+4*lane+2) && occupied_lanes[i] > (2+4*lane-2))
+                {
+                  lane += 1;
+                  lane = lane % 3;
+                  if (lane == current_lane)
+                  {
+                    break;
+                  }
+
+                }
+
+              }
+              if (fabs(lane-current_lane)>1)
+              {
+                lane = (current_lane + 1) % 3;
+              }
+            }
+
+            if(too_close)
+            {
+              ref_vel -= .224;
+            }
+            else if(ref_vel < 49.5)
+            {
+              ref_vel += .224;
+            }
+
+            // end of collision avoidance
           	vector<double> ptsx;
           	vector<double> ptsy;
 
