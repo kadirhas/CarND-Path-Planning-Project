@@ -288,6 +288,7 @@ int main() {
             vector<float> occupied_lanes;
             if (check_lane_change)
             {
+              cout << "new detection: " << endl;
               for(int i = 0; i < sensor_fusion.size(); i++)
               {
                 float d = sensor_fusion[i][6];
@@ -299,31 +300,60 @@ int main() {
 
                 check_car_s += ((double)prev_size*.02*check_speed);
 
-                if((check_car_s > car_s) && ((check_car_s-car_s) < 30))
+                if((check_car_s > (car_s-5.0)) && ((check_car_s-car_s) < 40.0))
                 {
                   occupied_lanes.push_back(d);
+                  cout << "occupied lanes: " << d << endl;
                 }
               }
+              sort(occupied_lanes.begin(), occupied_lanes.end());
+              // bu algoritma buglu, sen line taradiktan sonra tekrar o line kontrol ediliyor, sonra patliyor.
+              // su sira ile geldiklerini dusun: 0 2 1 0, ego: 2. bu durumda asagisi patlar
               int current_lane = lane;
+              lane = 0;
+              bool mid_occupied = false;
               for(int i = 0; i < occupied_lanes.size(); i++ )
               {
                 if(occupied_lanes[i] < (2+4*lane+2) && occupied_lanes[i] > (2+4*lane-2))
                 {
                   lane += 1;
                   lane = lane % 3;
-                  if (lane == current_lane)
+                  if (lane == 0)
                   {
+                    check_lane_change = false;
+                    lane = current_lane;
                     break;
                   }
 
                 }
+                if (occupied_lanes[i] < 8. && occupied_lanes[i] > 4.)
+                {
+                  mid_occupied = true;
+                }
 
               }
-              if (fabs(lane-current_lane)>1)
+              if (check_lane_change && !mid_occupied)
               {
-                lane = (current_lane + 1) % 3;
+                if ((current_lane+1<lane))
+                {
+                  lane = (current_lane + 1);
+                }
+                else if (current_lane-1>lane)
+                {
+                  lane = (current_lane - 1);
+                }
+              }
+              else if (fabs(current_lane-lane)>1)
+              {
+                lane = current_lane;
               }
             }
+
+            /*if(changing_lane>0)
+            {
+              lane = current_lane;
+              changing_lane = -1;
+            }*/
 
             if(too_close)
             {
@@ -370,9 +400,9 @@ int main() {
               ptsy.push_back(ref_y);
             }
 
-            vector<double> next_wp0 = getXY(car_s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
-            vector<double> next_wp1 = getXY(car_s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
-            vector<double> next_wp2 = getXY(car_s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp0 = getXY(car_s+33,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp1 = getXY(car_s+66,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp2 = getXY(car_s+99,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
             ptsx.push_back(next_wp0[0]);
             ptsx.push_back(next_wp1[0]);
@@ -404,7 +434,7 @@ int main() {
               next_y_vals.push_back(previous_path_y[i]);
             }
 
-            double target_x = 30.0;
+            double target_x = 35.0; // 30.0 original value
             double target_y = s(target_x);
             double target_dist = distance(0,0,target_x,target_y);
 
