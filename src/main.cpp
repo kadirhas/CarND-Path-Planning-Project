@@ -260,6 +260,7 @@ int main() {
 
             bool too_close = false;
             bool check_lane_change = false;
+            bool switching_lanes = false;
 
             //find ref_v to use
             for(int i = 0; i < sensor_fusion.size(); i++)
@@ -274,10 +275,13 @@ int main() {
                 double check_car_s = sensor_fusion[i][5];
 
                 check_car_s += ((double)prev_size*.02*check_speed);
-                if((check_car_s > car_s) && ((check_car_s-car_s) < 30))
+                if((check_car_s > car_s) && ((check_car_s-car_s) < 60))
                 {
                   //TODO: add some logic to change lanes etc
-                  too_close = true;
+                  if((check_car_s > car_s) && ((check_car_s-car_s) < 30))
+                  {
+                    too_close = true;
+                  }
                   check_lane_change = true;
 
                 }
@@ -285,8 +289,12 @@ int main() {
               }
 
             }
+            if ((car_d>3 && car_d<5) || (car_d>7 && car_d<9))
+            {
+              switching_lanes = true;
+            }
             vector<float> occupied_lanes;
-            if (check_lane_change)
+            if (check_lane_change && !switching_lanes)
             {
               cout << "new detection: " << endl;
               for(int i = 0; i < sensor_fusion.size(); i++)
@@ -400,9 +408,9 @@ int main() {
               ptsy.push_back(ref_y);
             }
 
-            vector<double> next_wp0 = getXY(car_s+33,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
-            vector<double> next_wp1 = getXY(car_s+66,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
-            vector<double> next_wp2 = getXY(car_s+99,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp0 = getXY(car_s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp1 = getXY(car_s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            vector<double> next_wp2 = getXY(car_s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
             ptsx.push_back(next_wp0[0]);
             ptsx.push_back(next_wp1[0]);
