@@ -252,7 +252,6 @@ int main() {
 
             int prev_size = previous_path_x.size();
 
-            //Avoid collision
             if(prev_size > 0)
             {
               car_s = end_path_s;
@@ -262,10 +261,10 @@ int main() {
             bool check_lane_change = false;
             bool switching_lanes = false;
 
-            //find ref_v to use
+            //Scene understanding
             for(int i = 0; i < sensor_fusion.size(); i++)
             {
-              //if the car is in my lane
+              //check if any of the detected vehicles are on the same lane
               float d = sensor_fusion[i][6];
               if(d < (2+4*lane+2) && d > (2+4*lane-2))
               {
@@ -275,9 +274,10 @@ int main() {
                 double check_car_s = sensor_fusion[i][5];
 
                 check_car_s += ((double)prev_size*.02*check_speed);
+                // the vehicle on the same lane is closer than 60 meters, consider changing lanes
                 if((check_car_s > car_s) && ((check_car_s-car_s) < 60))
                 {
-                  //TODO: add some logic to change lanes etc
+                  // If they are on the same lane AND close, too close flag is up
                   if((check_car_s > car_s) && ((check_car_s-car_s) < 30))
                   {
                     too_close = true;
@@ -289,10 +289,14 @@ int main() {
               }
 
             }
+            // if the ego vehicle is not changing any lanes, it is okay to generating a lane change manoeuvre
+            // without this lanes, the vehicle can avoid much more collusions, but the acceleration limits are violated in that case
             if ((car_d>3 && car_d<5) || (car_d>7 && car_d<9))
             {
               switching_lanes = true;
             }
+            
+            // Behavior planning
             vector<float> occupied_lanes;
             if (check_lane_change && !switching_lanes)
             {
@@ -307,18 +311,19 @@ int main() {
                 double check_car_s = sensor_fusion[i][5];
 
                 check_car_s += ((double)prev_size*.02*check_speed);
-
+                // if the vehicle on the lane is close to rear side of the vehicle, mark the lane as occupied
+                // or if they are on the front but the distance is lower than 40 meters
                 if((check_car_s > (car_s-5.0)) && ((check_car_s-car_s) < 40.0))
                 {
                   occupied_lanes.push_back(d);
                   cout << "occupied lanes: " << d << endl;
                 }
               }
+              //sort for lane numbers to make sure every lane is checked for occupancy
               sort(occupied_lanes.begin(), occupied_lanes.end());
-              // bu algoritma buglu, sen line taradiktan sonra tekrar o line kontrol ediliyor, sonra patliyor.
-              // su sira ile geldiklerini dusun: 0 2 1 0, ego: 2. bu durumda asagisi patlar
               int current_lane = lane;
               lane = 0;
+              // changing lanes from 0 to 2 vice versa might be necessary. Because of that, make sure that the middle lane is also empty
               bool mid_occupied = false;
               for(int i = 0; i < occupied_lanes.size(); i++ )
               {
@@ -328,6 +333,7 @@ int main() {
                   lane = lane % 3;
                   if (lane == 0)
                   {
+                    // all lanes are occupied, cancel changing lanes
                     check_lane_change = false;
                     lane = current_lane;
                     break;
@@ -336,12 +342,15 @@ int main() {
                 }
                 if (occupied_lanes[i] < 8. && occupied_lanes[i] > 4.)
                 {
+                  // the middle lane is occupied
                   mid_occupied = true;
                 }
 
               }
+              // If the chosen lane is further away than the next lane, check the middle lane
               if (check_lane_change && !mid_occupied)
               {
+                // smooth the lane change, change 1 lane at a time to avoid high jerk
                 if ((current_lane+1<lane))
                 {
                   lane = (current_lane + 1);
@@ -357,12 +366,7 @@ int main() {
               }
             }
 
-            /*if(changing_lane>0)
-            {
-              lane = current_lane;
-              changing_lane = -1;
-            }*/
-
+            //Slow down if there is a close vehicle on the same lane
             if(too_close)
             {
               ref_vel -= .224;
@@ -372,17 +376,18 @@ int main() {
               ref_vel += .224;
             }
 
-            // end of collision avoidance
+            // Trajectory generation
           	vector<double> ptsx;
           	vector<double> ptsy;
 
             double ref_x = car_x;
             double ref_y = car_y;
             double ref_yaw = deg2rad(car_yaw);
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+            
+            // Obtain the previous path to smooth the new path
             if(prev_size<2)
             {
-              // TODO: check car_yaw, if it is degree these formulas are wrong
+              
               double prev_car_x = car_x - cos(car_yaw);
               double prev_car_y = car_y - sin(car_yaw);
 
@@ -408,6 +413,7 @@ int main() {
               ptsy.push_back(ref_y);
             }
 
+            // generate new waypoints on the chosen lane
             vector<double> next_wp0 = getXY(car_s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
             vector<double> next_wp1 = getXY(car_s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
             vector<double> next_wp2 = getXY(car_s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -420,6 +426,7 @@ int main() {
             ptsy.push_back(next_wp1[1]);
             ptsy.push_back(next_wp2[1]);
 
+            // Transform the coordinates to the ego vehicle
             for(int i = 0; i < ptsx.size(); i++)
             {
               double shift_x = ptsx[i] - ref_x;
@@ -436,12 +443,14 @@ int main() {
             vector<double> next_x_vals;
             vector<double> next_y_vals;
 
+            // Use the previous path points to protect smoothness
             for(int i = 0; i<previous_path_x.size(); i++)
             {
               next_x_vals.push_back(previous_path_x[i]);
               next_y_vals.push_back(previous_path_y[i]);
             }
 
+            // generate the x y points using the spline
             double target_x = 35.0; // 30.0 original value
             double target_y = s(target_x);
             double target_dist = distance(0,0,target_x,target_y);
@@ -459,6 +468,7 @@ int main() {
               double x_ref = x_point;
               double y_ref = y_point;
 
+              //transform back to earth coordinates
               x_point = (x_ref * cos(ref_yaw) - y_ref*sin(ref_yaw));
               y_point = (x_ref * sin(ref_yaw) + y_ref*cos(ref_yaw));
 
